@@ -257,77 +257,132 @@ document.querySelectorAll(".guest-btn").forEach(btn=>{
   });
 });
 
-document.getElementById("bookingForm").addEventListener("submit",function(e){
-  e.preventDefault();
+function showBookingMessage(message) {
+  document.getElementById("message").textContent = message;
+}
 
-  const message=document.getElementById("message");
-  const name=document.getElementById("guestName").value.trim();
-  const count=Number(document.getElementById("guestCount").value);
+function loadBookings() {
+  const callbackName = "bookingLoadCallback";
+  window[callbackName] = function(data) {
+    if (!data || !data.success || !Array.isArray(data.bookings)) {
+      showBookingMessage("โหลดข้อมูลการจองไม่สำเร็จ กรุณารีเฟรชหน้า");
+      return;
+    }
 
-  if(!selectedTable){
-    message.textContent="กรุณาเลือกโต๊ะจากผังก่อน";
-    return;
-  }
+    Object.keys(tableState).forEach(key => delete tableState[key]);
 
-  const n=Number(selectedTable);
+    data.bookings.forEach(booking => {
+      tableState[Number(booking.tableNumber)] = {
+        name: booking.name,
+        count: Number(booking.guests),
+        date: booking.bookedAt || ""
+      };
+    });
 
-  if(tableState[n]){
-    message.textContent="โต๊ะนี้ถูกจองแล้ว กรุณาเลือกโต๊ะอื่น";
-    selectedTable="";
-    document.getElementById("tableName").value="";
     renderTables();
-    return;
-  }
-
-  if(!name){
-    message.textContent="กรุณากรอกชื่อผู้จอง";
-    return;
-  }
-
-  if(!Number.isInteger(count)||count<1||count>5){
-    message.textContent="กรุณาเลือกจำนวนคนตั้งแต่ 1–5 คน";
-    return;
-  }
-
-  const now=new Date();
-
-  tableState[n]={
-    name:name,
-    count:count,
-    date:now.toLocaleString("th-TH")
   };
 
-  document.getElementById("receiptTable").textContent=tableLabel(n);
-  document.getElementById("receiptName").textContent=name;
-  document.getElementById("receiptCount").textContent=count+" คน";
-  document.getElementById("receiptDate").textContent=tableState[n].date;
-  document.getElementById("receipt").hidden=false;
+  const script = document.createElement("script");
+  script.src = API_URL + "?callback=" + callbackName + "&t=" + Date.now();
+  script.onerror = function() {
+    showBookingMessage("เชื่อมต่อระบบจองไม่สำเร็จ");
+  };
+  document.body.appendChild(script);
+}
 
-  selectedTable="";
-  selectedCount=0;
-  this.reset();
+document.getElementById("bookingForm").addEventListener("submit", function(e) {
+  e.preventDefault();
 
-  document.querySelectorAll(".guest-btn").forEach(btn=>{
-    btn.classList.remove("active");
-    btn.setAttribute("aria-pressed","false");
+  const name = document.getElementById("guestName").value.trim();
+  const count = Number(document.getElementById("guestCount").value);
+  const message = document.getElementById("message");
+
+  if (!selectedTable) {
+    message.textContent = "กรุณาเลือกโต๊ะจากผังก่อน";
+    return;
+  }
+
+  if (!name) {
+    message.textContent = "กรุณากรอกชื่อผู้จอง";
+    return;
+  }
+
+  if (!Number.isInteger(count) || count < 1 || count > 5) {
+    message.textContent = "กรุณาเลือกจำนวนคนตั้งแต่ 1–5 คน";
+    return;
+  }
+
+  const tableNumber = Number(selectedTable);
+  if (tableState[tableNumber]) {
+    message.textContent = "โต๊ะนี้ถูกจองแล้ว กรุณาเลือกโต๊ะอื่น";
+    loadBookings();
+    return;
+  }
+
+  message.textContent = "กำลังบันทึกการจอง...";
+
+  const callbackName = "bookingSubmitCallback";
+  window[callbackName] = function(data) {
+    if (!data || !data.success) {
+      message.textContent = data && data.message
+        ? data.message
+        : "จองไม่สำเร็จ กรุณาลองใหม่";
+      loadBookings();
+      return;
+    }
+
+    loadBookings();
+
+    const now = new Date();
+    document.getElementById("receiptTable").textContent = tableLabel(tableNumber);
+    document.getElementById("receiptName").textContent = name;
+    document.getElementById("receiptCount").textContent = count + " คน";
+    document.getElementById("receiptDate").textContent = now.toLocaleString("th-TH");
+    document.getElementById("receipt").hidden = false;
+
+    selectedTable = "";
+    selectedCount = 0;
+    document.getElementById("tableName").value = "";
+    document.getElementById("bookingForm").reset();
+
+    document.querySelectorAll(".guest-btn").forEach(btn => {
+      btn.classList.remove("active");
+      btn.setAttribute("aria-pressed", "false");
+    });
+
+    message.textContent = "จองสำเร็จ!";
+    document.getElementById("receipt").scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+  };
+
+  const script = document.createElement("script");
+  const params = new URLSearchParams({
+    action: "book",
+    tableNumber: String(tableNumber),
+    name: name,
+    guests: String(count),
+    callback: callbackName,
+    t: String(Date.now())
   });
 
-  message.textContent="จองสำเร็จ! ชื่อผู้จองแสดงบนโต๊ะแล้ว";
-  renderTables();
-
-  document.getElementById("receipt").scrollIntoView({
-    behavior:"smooth",
-    block:"start"
-  });
+  script.src = API_URL + "?" + params.toString();
+  script.onerror = function() {
+    message.textContent = "เชื่อมต่อระบบจองไม่สำเร็จ กรุณาลองใหม่";
+  };
+  document.body.appendChild(script);
 });
 
-function newBooking(){
-  document.getElementById("receipt").hidden=true;
+function newBooking() {
+  document.getElementById("receipt").hidden = true;
   document.getElementById("bookingForm").scrollIntoView({
-    behavior:"smooth",
-    block:"start"
+    behavior: "smooth",
+    block: "start"
   });
 }
+
+loadBookings();
 
 renderTables();
 </script>
